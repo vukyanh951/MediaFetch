@@ -57,5 +57,10 @@ Deploy the full Docker Compose stack to a host that supports long-running
 Python processes and sufficient temporary disk space. Media extraction and
 video transcoding cannot run on static hosting alone.
 
+The included `render.yaml` deploys the complete website and Python downloader
+as one Docker web service on Render. Render provides an HTTPS `onrender.com`
+domain automatically. The free instance may sleep after periods of inactivity;
+use a paid instance for an always-on production service.
+
 Only download content you own or have permission to save. Platform changes can
 occasionally require an update to `yt-dlp`.
