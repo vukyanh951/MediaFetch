@@ -32,6 +32,7 @@ SUPPORTED_DOMAINS = {
 APPLE_VIDEO_CODECS = {"h264", "hevc"}
 APPLE_AUDIO_CODECS = {"aac"}
 JOB_TTL_SECONDS = 60 * 60
+MAX_HOSTED_VIDEO_HEIGHT = 1280
 # Video transcoding is the most memory-intensive part of the service. Keeping
 # it single-file prevents two Apple conversions from exhausting small hosts.
 MAX_ACTIVE_DOWNLOADS = 1
@@ -161,7 +162,12 @@ def analyze_media(url: str) -> dict[str, Any]:
     info = first_entry(raw)
     if not info:
         raise RuntimeError("No downloadable media was found.")
-    heights = sorted({int(item["height"]) for item in info.get("formats") or [] if item.get("height") and int(item["height"]) >= 144}, reverse=True)
+    heights = sorted({
+        int(item["height"])
+        for item in info.get("formats") or []
+        if item.get("height")
+        and 144 <= int(item["height"]) <= MAX_HOSTED_VIDEO_HEIGHT
+    }, reverse=True)
     duration = int(info.get("duration") or 0)
     minutes, seconds = divmod(duration, 60)
     hours, minutes = divmod(minutes, 60)
@@ -204,7 +210,11 @@ def download_av(url: str, folder: Path, job: Job, media_type: str, quality: int 
         options.update({"format": "bestaudio/best", "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "0"}]})
         target_ext = ".mp3"
     else:
-        limit = f"[height<={quality}]" if quality else ""
+        # High-resolution VP9 sources can exhaust small hosted instances while
+        # being converted to Apple-friendly H.264. 1280px remains crisp on a
+        # phone and keeps decoding/transcoding memory bounded.
+        effective_quality = min(quality or MAX_HOSTED_VIDEO_HEIGHT, MAX_HOSTED_VIDEO_HEIGHT)
+        limit = f"[height<={effective_quality}]"
         options.update({
             "format": f"bestvideo{limit}[vcodec^=avc]+bestaudio[acodec^=mp4a]/best{limit}[vcodec^=avc][acodec^=mp4a]/bestvideo{limit}+bestaudio/best{limit}/best",
             "merge_output_format": "mp4",
