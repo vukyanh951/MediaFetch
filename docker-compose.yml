@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    volumes:
+      - mediafetch_temp:/tmp/mediafetch-web
+  website:
+    build:
+      context: .
+      args:
+        MEDIAFETCH_API_URL: http://backend:8000
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+volumes:
+  mediafetch_temp:

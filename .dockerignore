@@ -1,0 +1,7 @@
+.git
+.next
+dist
+node_modules
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
