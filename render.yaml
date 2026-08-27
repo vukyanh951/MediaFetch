@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: mediafetch
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./deploy/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /api/health
+    envVars:
+      - key: MEDIAFETCH_API_URL
+        value: http://127.0.0.1:8000
+      - key: PORT
+        value: 10000
