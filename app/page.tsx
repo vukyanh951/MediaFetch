@@ -15,7 +15,7 @@ const copy = {
     placeholder: 'Dán liên kết Facebook, YouTube, TikTok…', analyze: 'Phân tích', analyzing: 'Đang phân tích…',
     supports: 'Hỗ trợ Facebook, Instagram, YouTube, TikTok, Reddit và X', preview: 'NỘI DUNG ĐÃ TÌM THẤY',
     quality: 'CHẤT LƯỢNG VIDEO', best: 'Tốt nhất hiện có', prepare: 'Chuẩn bị tải xuống', preparing: 'Đang chuẩn bị…', download: 'Tải về thiết bị',
-    invalid: 'Vui lòng nhập một liên kết được hỗ trợ.', failed: 'Không thể xử lý liên kết này. Hãy thử lại.', ready: 'Tệp của bạn đã sẵn sàng.', connecting: 'Đang kết nối với dịch vụ tải xuống…',
+    invalid: 'Vui lòng nhập một liên kết được hỗ trợ.', failed: 'Không thể xử lý liên kết này. Hãy thử lại.', ready: 'Tệp của bạn đã sẵn sàng.', connecting: 'Đang kết nối với dịch vụ tải xuống…', connectionLost: 'Kết nối tải xuống bị gián đoạn. Vui lòng thử lại sau vài giây.',
     howTitle: 'Chỉ ba bước đơn giản', howSub: 'Không cần đăng ký. Không lưu lịch sử liên kết.',
     steps: [['01', 'Dán liên kết', 'Sao chép URL của video hoặc bài đăng bạn muốn lưu.'], ['02', 'Chọn định dạng', 'Tải video MP4, âm thanh MP3 hoặc ảnh bìa JPG.'], ['03', 'Lưu về máy', 'Tệp được chuẩn bị và tải thẳng xuống thiết bị của bạn.']],
     apple: 'Tương thích Apple', appleBody: 'Video MP4 được ưu tiên H.264/AAC và tự động tối ưu để phát mượt trên Mac, iPhone và iPad.',
@@ -28,7 +28,7 @@ const copy = {
     placeholder: 'Paste a Facebook, YouTube, TikTok… link', analyze: 'Analyze', analyzing: 'Analyzing…',
     supports: 'Supports Facebook, Instagram, YouTube, TikTok, Reddit, and X', preview: 'MEDIA FOUND',
     quality: 'VIDEO QUALITY', best: 'Best available', prepare: 'Prepare download', preparing: 'Preparing…', download: 'Download to device',
-    invalid: 'Enter a supported media link.', failed: 'We could not process this link. Please try again.', ready: 'Your file is ready.', connecting: 'Connecting to the download service…',
+    invalid: 'Enter a supported media link.', failed: 'We could not process this link. Please try again.', ready: 'Your file is ready.', connecting: 'Connecting to the download service…', connectionLost: 'The download connection was interrupted. Please retry in a few seconds.',
     howTitle: 'Three simple steps', howSub: 'No account required. No link history stored.',
     steps: [['01', 'Paste a link', 'Copy the URL of the video or post you want to save.'], ['02', 'Choose a format', 'Download MP4 video, MP3 audio, or a JPG cover image.'], ['03', 'Save to your device', 'Your file is prepared and sent straight to your device.']],
     apple: 'Apple compatible', appleBody: 'MP4 video prefers H.264/AAC and is optimized automatically for smooth playback on Mac, iPhone, and iPad.',
@@ -57,33 +57,48 @@ export default function Home() {
   useEffect(() => { document.documentElement.lang = language; window.localStorage.setItem('mediafetch-language', language); }, [language]);
   const validUrl = useMemo(() => { try { const host = new URL(url).hostname; return supported.some((domain) => host === domain || host.endsWith(`.${domain}`)); } catch { return false; } }, [url]);
 
+  function errorMessage(reason: unknown) {
+    const message = reason instanceof Error ? reason.message : '';
+    return /string did not match|load failed|failed to fetch|network/i.test(message) ? t.connectionLost : message || t.failed;
+  }
+
+  async function responseData(response: Response) {
+    const body = await response.text();
+    try { return JSON.parse(body); }
+    catch { throw new Error(response.ok ? t.failed : t.connectionLost); }
+  }
+
   async function analyze(event: FormEvent) {
     event.preventDefault(); setError(''); setInfo(null);
     if (!validUrl) { setError(t.invalid); return; }
     setState('analyzing');
     try {
       const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.detail || t.failed);
+      const data = await responseData(response); if (!response.ok) throw new Error(data.detail || t.failed);
       setInfo(data); setState('idle'); setQuality('');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t.failed); setState('idle'); }
+    } catch (reason) { setError(errorMessage(reason)); setState('idle'); }
   }
 
   async function prepare() {
     setError(''); setState('preparing');
     try {
       const response = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, media_type: type, quality: quality ? Number(quality) : null }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.detail || t.failed);
+      const data = await responseData(response); if (!response.ok) throw new Error(data.detail || t.failed);
       setJobId(data.job_id); poll(data.job_id);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t.failed); setState('idle'); }
+    } catch (reason) { setError(errorMessage(reason)); setState('idle'); }
   }
 
   async function poll(id: string) {
     try {
-      const response = await fetch(`/api/jobs/${id}`); const data = await response.json();
+      const response = await fetch(`/api/jobs/${id}`); const data = await responseData(response);
       if (!response.ok || data.status === 'error') throw new Error(data.error || t.failed);
       if (data.status === 'complete') { setState('ready'); return; }
       window.setTimeout(() => poll(id), 900);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t.failed); setState('idle'); }
+    } catch (reason) { setError(errorMessage(reason)); setState('idle'); }
+  }
+
+  function saveFile() {
+    window.location.href = `/api/files/${encodeURIComponent(jobId)}`;
   }
 
   return <main>
@@ -97,7 +112,7 @@ export default function Home() {
       <p className="eyebrow"><span>✦</span>{t.badge}</p><h1>{t.titleA}<br/><em>{t.titleB}</em></h1><p className="hero-copy">{t.intro}</p>
       <form className="search" onSubmit={analyze}><span className="link-icon">↗</span><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder={t.placeholder} aria-label={t.placeholder}/><button type="submit" disabled={state === 'analyzing'}>{state === 'analyzing' ? t.analyzing : t.analyze}<span>→</span></button></form>
       <p className="support-line"><span className="pulse"/>{t.supports}</p>{error && <p className="error" role="alert">{error}</p>}
-      {info && <section className="media-card" aria-live="polite"><div className="media-image">{info.thumbnail ? <img src={info.thumbnail} alt=""/> : <span>♪</span>}<span className="platform-pill">{info.platform}</span></div><div className="media-detail"><p className="section-label">{t.preview}</p><h2>{info.title}</h2><p className="meta">{t.creator}: {info.creator} <span>•</span> {t.duration}: {info.duration}</p><div className="format-row">{(['MP4','MP3','JPG'] as MediaType[]).map((item) => <button key={item} className={type === item ? 'active' : ''} onClick={() => setType(item)}>{item}</button>)}</div>{type === 'MP4' && <label className="quality">{t.quality}<select value={quality} onChange={(event) => setQuality(event.target.value)}><option value="">{t.best}</option>{info.qualities.map((item) => <option key={item} value={item}>{item}p</option>)}</select></label>}{state !== 'ready' ? <button className="primary-action" onClick={prepare} disabled={state === 'preparing'}>{state === 'preparing' ? t.preparing : t.prepare}<span>↓</span></button> : <a className="primary-action" href={`/api/files/${jobId}`}>{t.download}<span>↓</span></a>}{state === 'preparing' && <p className="job-status">{t.connecting}</p>}{state === 'ready' && <p className="job-status ready">✓ {t.ready}</p>}</div></section>}
+      {info && <section className="media-card" aria-live="polite"><div className="media-image">{info.thumbnail ? <img src={info.thumbnail} alt=""/> : <span>♪</span>}<span className="platform-pill">{info.platform}</span></div><div className="media-detail"><p className="section-label">{t.preview}</p><h2>{info.title}</h2><p className="meta">{t.creator}: {info.creator} <span>•</span> {t.duration}: {info.duration}</p><div className="format-row">{(['MP4','MP3','JPG'] as MediaType[]).map((item) => <button key={item} className={type === item ? 'active' : ''} onClick={() => setType(item)}>{item}</button>)}</div>{type === 'MP4' && <label className="quality">{t.quality}<select value={quality} onChange={(event) => setQuality(event.target.value)}><option value="">{t.best}</option>{info.qualities.map((item) => <option key={item} value={item}>{item}p</option>)}</select></label>}{state !== 'ready' ? <button className="primary-action" onClick={prepare} disabled={state === 'preparing'}>{state === 'preparing' ? t.preparing : t.prepare}<span>↓</span></button> : <button className="primary-action" onClick={saveFile}>{t.download}<span>↓</span></button>}{state === 'preparing' && <p className="job-status">{t.connecting}</p>}{state === 'ready' && <p className="job-status ready">✓ {t.ready}</p>}</div></section>}
     </section>
     <section className="platform-strip" id="platforms">{platforms.map(([icon, name]) => <div key={name}><span>{icon}</span>{name}</div>)}</section>
     <section className="how" id="how"><div className="section-heading"><p className="section-label">MEDIAFETCH</p><h2>{t.howTitle}</h2><p>{t.howSub}</p></div><div className="steps">{t.steps.map(([number,title,body]) => <article key={number}><span className="step-number">{number}</span><div className="step-icon">{number === '01' ? '↗' : number === '02' ? '◇' : '↓'}</div><h3>{title}</h3><p>{body}</p></article>)}</div></section>
