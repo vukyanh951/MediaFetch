@@ -40,4 +40,4 @@ COPY --from=frontend-build /site/dist ./dist
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "(cd /app/backend && uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers) & exec pnpm start"]
+CMD ["sh", "-c", "(cd /app/backend && uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers) & exec node ./node_modules/vinext/dist/cli.js start"]
